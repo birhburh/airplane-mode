@@ -1,3 +1,6 @@
+mod input;
+
+use crate::input::InputHandler;
 use macroquad::prelude::*;
 use macroquad_profiler::profiler;
 use macroquad_tiled as tiled;
@@ -23,6 +26,7 @@ impl Default for Player {
 #[macroquad::main("Airplane Mode")]
 async fn main() {
     let tile_side = 32.;
+    let mut input_handler = InputHandler::new();
     set_pc_assets_folder("assets");
     macroquad_profiler::profiler(Default::default());
 
@@ -103,15 +107,16 @@ async fn main() {
         }
 
         let mut running = true;
+        input_handler.update();
         // player movement control
         {
-            if is_key_down(KeyCode::Right) {
+            if input_handler.right {
                 player.speed.x = 100.0;
-            } else if is_key_down(KeyCode::Left) {
+            } else if input_handler.left {
                 player.speed.x = -100.0;
-            } else if is_key_down(KeyCode::Down) {
+            } else if input_handler.down {
                 player.speed.y = 100.;
-            } else if is_key_down(KeyCode::Up) {
+            } else if input_handler.up {
                 player.speed.y = -100.;
             } else if is_key_down(KeyCode::Escape) {
                 break;
@@ -120,7 +125,6 @@ async fn main() {
                 player.speed.y = 0.;
                 running = false;
             }
-
             // check collisions
             if player.position.x + player.speed.x * get_frame_time() > tile_side * 9.
                 || player.position.x + player.speed.x * get_frame_time() < tile_side
@@ -176,6 +180,9 @@ async fn main() {
             BLUE,
         );
         set_default_camera();
+
+        #[cfg(target_os = "android")]
+        input_handler.draw();
         // draw_text(&format!("{:?}", camera.target), 0.0, 64.0, 16., RED);
         draw_circle(
             (screen_width() - 2.) / 2.,
