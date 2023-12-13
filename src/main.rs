@@ -6,8 +6,8 @@ use macroquad_profiler::profiler;
 use macroquad_tiled as tiled;
 
 struct Player {
+    rect: Rect,
     speed: Vec2,
-    position: Vec2,
     frame: i32,
     time: f32,
 }
@@ -15,8 +15,8 @@ struct Player {
 impl Default for Player {
     fn default() -> Self {
         Self {
+            rect: Default::default(),
             speed: Default::default(),
-            position: Default::default(),
             frame: Default::default(),
             time: Default::default(),
         }
@@ -37,7 +37,7 @@ async fn main() {
     let tiled_map = tiled::load_map(&tiled_map_json, &[("tileset.png", tileset)], &[]).unwrap();
 
     let mut player = Player {
-        position: vec2(tile_side * 5., 0.),
+        rect: Rect::new(tile_side * 5., 0., tile_side - 8., tile_side - 8.),
         ..Default::default()
     };
     // set_fullscreen(true);
@@ -49,10 +49,10 @@ async fn main() {
         // clear_background(BLACK);
 
         let camera_height = tile_side * 11. * screen_height() / screen_width();
-        let camera_start = player.position.y - camera_height / 2. - tile_side;
-        let camera_end = player.position.y + camera_height / 2. + tile_side;
+        let camera_start = player.rect.y - camera_height / 2. - tile_side;
+        let camera_end = player.rect.y + camera_height / 2. + tile_side;
         let camera = Camera2D {
-            target: vec2(tile_side * 11. / 2., player.position.y),
+            target: vec2(tile_side * 11. / 2., player.rect.y),
             zoom: vec2(1. / (tile_side * 11. / 2.), 1. / (camera_height / 2.)),
             ..Default::default()
         };
@@ -69,10 +69,36 @@ async fn main() {
 
         set_camera(&camera);
 
-        let colors = [RED, ORANGE, YELLOW, GREEN, SKYBLUE, BLUE, VIOLET];
-        let mut cur_color = 0;
+        input_handler.update();
+
+        if input_handler.right {
+            player.speed.x = 100.0;
+        } else if input_handler.left {
+            player.speed.x = -100.0;
+        } else {
+            player.speed.x = 0.;
+        }
+        if input_handler.down {
+            player.speed.y = 100.;
+        } else if input_handler.up {
+            player.speed.y = -100.;
+        } else {
+            player.speed.y = 0.;
+        }
+        if is_key_down(KeyCode::Escape) {
+            break;
+        }
+
+        let dx = player.speed.x * get_frame_time();
+        let dy = player.speed.y * get_frame_time();
+        let mut new_rect = Rect::new(
+            player.rect.x + dx,
+            player.rect.y + dy,
+            player.rect.w,
+            player.rect.h,
+        );
+
         // draw map
-        let mut ends = Vec::new();
         for layer in &tiled_map.raw_tiled_map.layers {
             let offsetx = layer.offsetx.unwrap_or_default() as f32;
             let offsety = layer.offsety.unwrap_or_default() as f32;
@@ -96,7 +122,6 @@ async fn main() {
 
             let start_y_f = start_y as f32 * tile_side + offsety;
             let layer_height = (end_y - start_y as f32) + 1.;
-            ends.push((start_y, end_y));
             let src = Rect::new(0., start_y as f32, 11., layer_height);
             if start_y_f > camera_start && start_y_f < camera_end {
                 tiled_map.draw_tiles(
@@ -109,70 +134,103 @@ async fn main() {
                     ),
                     src,
                 );
+
+                // check collisions
+                if new_rect.y < 0. {
+                    new_rect.y = player.rect.y;
+                }
+                if new_rect.y > tile_side * (layer.height as f32 - 1.) {
+                    new_rect.y = player.rect.y;
+                }
+
                 for (x, y, tile) in tiled_map.tiles(&layer.name, src) {
+                    let tile_rect = Rect::new(
+                        x as f32 * tile_side + offsetx,
+                        y as f32 * tile_side + offsety,
+                        tile_side,
+                        tile_side,
+                    );
                     if y as f32 > start_y as f32 + camera_height / tile_side + 1. {
                         break;
                     }
-                    let y = y as f32 * tile_side + offsety;
-                    if y < (player.position.y + camera_height / 1. + tile_side) {
+                    if tile_rect.y < (player.rect.y + camera_height / 2. + tile_side) {
                         if let Some(tile) = tile {
                             if tile.id != 0 {
                                 draw_rectangle_lines(
                                     x as f32 * tile_side + offsetx,
-                                    y,
+                                    tile_rect.y,
                                     tile_side,
                                     tile_side,
                                     2.,
-                                    colors[cur_color],
+                                    YELLOW,
                                 );
                             }
                         }
                     }
+                    if tile_rect.y < new_rect.y + tile_side
+                        && tile_rect.y > new_rect.y - tile_side
+                        && tile_rect.x < new_rect.x + tile_side
+                        && tile_rect.x > new_rect.x - tile_side
+                    {
+                        if let Some(tile) = tile {
+                            if tile.id != 0 {
+                                let color = if new_rect.overlaps(&tile_rect) {
+                                    LIME
+                                } else {
+                                    PINK
+                                };
+                                draw_rectangle_lines(
+                                    tile_rect.x,
+                                    tile_rect.y,
+                                    tile_rect.w,
+                                    tile_rect.h,
+                                    3.,
+                                    color,
+                                );
+                                if new_rect.overlaps(&tile_rect) {
+                                    if tile_rect.right() < player.rect.left() ||
+                                    tile_rect.left() > player.rect.right()
+                                    {
+                                        new_rect.x = player.rect.x;
+                                    }
+                                    if tile_rect.bottom() < player.rect.top() ||
+                                       tile_rect.top() > player.rect.bottom()
+                                    {
+                                        new_rect.y = player.rect.y;
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
-
-                draw_rectangle_lines(
-                    2. * (cur_color + 1) as f32,
-                    start_y_f + 2. * (cur_color + 1) as f32,
-                    tile_side * 11. - 4. * (cur_color + 1) as f32,
-                    tile_side * layer_height - 4. * (cur_color + 1) as f32,
-                    2.,
-                    colors[cur_color],
-                );
-                cur_color += 1;
             }
         }
 
-        let mut running = true;
-        input_handler.update();
-        // player movement control
-        {
-            if input_handler.right {
-                player.speed.x = 100.0;
-            } else if input_handler.left {
-                player.speed.x = -100.0;
-            } else if input_handler.down {
-                player.speed.y = 100.;
-            } else if input_handler.up {
-                player.speed.y = -100.;
-            } else if is_key_down(KeyCode::Escape) {
-                break;
-            } else {
-                player.speed.x = 0.;
-                player.speed.y = 0.;
-                running = false;
-            }
-            // check collisions
-            if player.position.x + player.speed.x * get_frame_time() > tile_side * 9.
-                || player.position.x + player.speed.x * get_frame_time() < tile_side
-                || player.position.y + player.speed.y * get_frame_time() < 0.
-                || player.position.y + player.speed.y * get_frame_time() > tile_side * 77.
-            {
-                player.speed.x = 0.;
-                player.speed.y = 0.;
-            }
+        let x_sign = if new_rect.x < player.rect.x {
+            -1.
+        } else if new_rect.x > player.rect.x {
+            1.
+        } else {
+            0.
+        };
+        let y_sign = if new_rect.y < player.rect.y {
+            -1.
+        } else if new_rect.y > player.rect.y {
+            1.
+        } else {
+            0.
+        };
+        draw_line(
+            player.rect.x + player.rect.w / 2.,
+            player.rect.y + player.rect.h / 2.,
+            player.rect.x + player.rect.w / 2. + x_sign * 100.,
+            player.rect.y + player.rect.h / 2. + y_sign % 2. * 100.,
+            3.,
+            PURPLE,
+        );
 
-            player.position.x += player.speed.x * get_frame_time();
-            player.position.y += player.speed.y * get_frame_time();
+        {
+            player.rect = new_rect;
         }
 
         // draw player
@@ -182,6 +240,7 @@ async fn main() {
             const RUN_1_SPRITE: u32 = 19;
             const RUN_2_SPRITE: u32 = 23;
 
+            let running = player.speed.x != 0. || player.speed.y != 0.;
             let sprite = if running {
                 player.time += get_frame_time();
                 if player.time > 1. / 12 as f32 {
@@ -199,25 +258,27 @@ async fn main() {
                 STAND_SPRITE
             };
 
-            let pos = player.position;
+            let pos = player.rect;
+            let xdiff = tile_side - player.rect.w;
+            let ydiff = tile_side - player.rect.h;
             let rect = if player.speed.x >= 0.0 {
-                Rect::new(pos.x, pos.y, tile_side, tile_side)
+                Rect::new(pos.x - xdiff / 2., pos.y - ydiff, tile_side, tile_side)
             } else {
-                Rect::new(pos.x + tile_side, pos.y, -tile_side, tile_side)
+                Rect::new(pos.x + tile_side - xdiff / 2., pos.y - ydiff, -tile_side, tile_side)
             };
             tiled_map.spr("airplane", sprite, rect);
         }
         draw_rectangle_lines(
-            player.position.x,
-            player.position.y,
-            tile_side,
-            tile_side,
+            player.rect.x,
+            player.rect.y,
+            player.rect.w,
+            player.rect.h,
             2.,
             BLUE,
         );
         draw_rectangle_lines(
             0.,
-            player.position.y - camera_height / 2.,
+            player.rect.y - camera_height / 2.,
             tile_side * 11.,
             camera_height,
             2.,
@@ -227,8 +288,7 @@ async fn main() {
 
         #[cfg(target_os = "android")]
         input_handler.draw();
-        draw_text(&format!("{:?}", (camera_start, camera_end)), 0.0, 16.0, 16., RED);
-        draw_text(&format!("{:?}", ends), 0.0, 64.0, 16., RED);
+        // draw_text(&format!("{:?}", ends), 0.0, 64.0, 16., RED);
         draw_circle(
             (screen_width() - 2.) / 2.,
             (screen_height() - 2.) / 2.,
