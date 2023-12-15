@@ -91,12 +91,6 @@ async fn main() {
 
         let dx = player.speed.x * get_frame_time();
         let dy = player.speed.y * get_frame_time();
-        let mut new_rect = Rect::new(
-            player.rect.x + dx,
-            player.rect.y + dy,
-            player.rect.w,
-            player.rect.h,
-        );
 
         // draw map
         for layer in &tiled_map.raw_tiled_map.layers {
@@ -136,11 +130,11 @@ async fn main() {
                 );
 
                 // check collisions
-                if new_rect.y < 0. {
-                    new_rect.y = player.rect.y;
+                if player.rect.y + dy < 0. {
+                    player.speed.y = 0.;
                 }
-                if new_rect.y > tile_side * (layer.height as f32 - 1.) {
-                    new_rect.y = player.rect.y;
+                if player.rect.y + dy > tile_side * (layer.height as f32 - 1.) {
+                    player.speed.y = 0.;
                 }
 
                 for (x, y, tile) in tiled_map.tiles(&layer.name, src) {
@@ -150,9 +144,6 @@ async fn main() {
                         tile_side,
                         tile_side,
                     );
-                    if y as f32 > start_y as f32 + camera_height / tile_side + 1. {
-                        break;
-                    }
                     if tile_rect.y < (player.rect.y + camera_height / 2. + tile_side) {
                         if let Some(tile) = tile {
                             if tile.id != 0 {
@@ -167,18 +158,41 @@ async fn main() {
                             }
                         }
                     }
-                    if tile_rect.y < new_rect.y + tile_side
-                        && tile_rect.y > new_rect.y - tile_side
-                        && tile_rect.x < new_rect.x + tile_side
-                        && tile_rect.x > new_rect.x - tile_side
+                    if tile_rect.y < player.rect.y + tile_side * 2.
+                        && tile_rect.y > player.rect.y - tile_side * 2.
+                        && tile_rect.x < player.rect.x + tile_side * 2.
+                        && tile_rect.x > player.rect.x - tile_side * 2.
                     {
                         if let Some(tile) = tile {
                             if tile.id != 0 {
-                                let color = if new_rect.overlaps(&tile_rect) {
-                                    LIME
-                                } else {
-                                    PINK
-                                };
+                                let mut new_rect = Rect::new(
+                                    player.rect.x + dx,
+                                    player.rect.y,
+                                    player.rect.w,
+                                    player.rect.h,
+                                );
+
+                                let overlaps_x = new_rect.overlaps(&tile_rect);
+                                if overlaps_x {
+                                    if tile_rect.right() < player.rect.left() ||
+                                    tile_rect.left() > player.rect.right()
+                                    {
+                                        player.speed.x = 0.;
+                                    }
+                                }
+
+                                new_rect.x = player.rect.x;
+                                new_rect.y += dy;
+                                let overlaps_y = new_rect.overlaps(&tile_rect);
+                                if overlaps_y {
+                                    if tile_rect.bottom() < player.rect.top() ||
+                                       tile_rect.top() > player.rect.bottom()
+                                    {
+                                        player.speed.y = 0.;
+                                    }
+                                }
+
+                                let color = if overlaps_x || overlaps_y { LIME } else { PINK };
                                 draw_rectangle_lines(
                                     tile_rect.x,
                                     tile_rect.y,
@@ -187,18 +201,6 @@ async fn main() {
                                     3.,
                                     color,
                                 );
-                                if new_rect.overlaps(&tile_rect) {
-                                    if tile_rect.right() < player.rect.left() ||
-                                    tile_rect.left() > player.rect.right()
-                                    {
-                                        new_rect.x = player.rect.x;
-                                    }
-                                    if tile_rect.bottom() < player.rect.top() ||
-                                       tile_rect.top() > player.rect.bottom()
-                                    {
-                                        new_rect.y = player.rect.y;
-                                    }
-                                }
                             }
                         }
                     }
@@ -206,31 +208,9 @@ async fn main() {
             }
         }
 
-        let x_sign = if new_rect.x < player.rect.x {
-            -1.
-        } else if new_rect.x > player.rect.x {
-            1.
-        } else {
-            0.
-        };
-        let y_sign = if new_rect.y < player.rect.y {
-            -1.
-        } else if new_rect.y > player.rect.y {
-            1.
-        } else {
-            0.
-        };
-        draw_line(
-            player.rect.x + player.rect.w / 2.,
-            player.rect.y + player.rect.h / 2.,
-            player.rect.x + player.rect.w / 2. + x_sign * 100.,
-            player.rect.y + player.rect.h / 2. + y_sign % 2. * 100.,
-            3.,
-            PURPLE,
-        );
-
         {
-            player.rect = new_rect;
+            player.rect.x += player.speed.x * get_frame_time();
+            player.rect.y += player.speed.y * get_frame_time();
         }
 
         // draw player
@@ -264,7 +244,12 @@ async fn main() {
             let rect = if player.speed.x >= 0.0 {
                 Rect::new(pos.x - xdiff / 2., pos.y - ydiff, tile_side, tile_side)
             } else {
-                Rect::new(pos.x + tile_side - xdiff / 2., pos.y - ydiff, -tile_side, tile_side)
+                Rect::new(
+                    pos.x + tile_side - xdiff / 2.,
+                    pos.y - ydiff,
+                    -tile_side,
+                    tile_side,
+                )
             };
             tiled_map.spr("airplane", sprite, rect);
         }
@@ -276,19 +261,18 @@ async fn main() {
             2.,
             BLUE,
         );
-        draw_rectangle_lines(
-            0.,
-            player.rect.y - camera_height / 2.,
-            tile_side * 11.,
-            camera_height,
-            2.,
-            BLUE,
-        );
+
         set_default_camera();
 
         #[cfg(target_os = "android")]
         input_handler.draw();
-        // draw_text(&format!("{:?}", ends), 0.0, 64.0, 16., RED);
+        draw_text(
+            &format!("{:?}", (player.rect.x, player.rect.y)),
+            0.0,
+            32.0,
+            16.,
+            RED,
+        );
         draw_circle(
             (screen_width() - 2.) / 2.,
             (screen_height() - 2.) / 2.,
