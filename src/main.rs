@@ -158,10 +158,10 @@ async fn main() {
                             }
                         }
                     }
-                    if tile_rect.y < player.rect.y + tile_side * 2.
-                        && tile_rect.y > player.rect.y - tile_side * 2.
-                        && tile_rect.x < player.rect.x + tile_side * 2.
-                        && tile_rect.x > player.rect.x - tile_side * 2.
+                    if tile_rect.y < player.rect.y + tile_side * 1.5
+                        && tile_rect.y > player.rect.y - tile_side * 1.5
+                        && tile_rect.x < player.rect.x + tile_side * 1.5
+                        && tile_rect.x > player.rect.x - tile_side * 1.5
                     {
                         if let Some(tile) = tile {
                             if tile.id != 0 {
@@ -174,22 +174,14 @@ async fn main() {
 
                                 let overlaps_x = new_rect.overlaps(&tile_rect);
                                 if overlaps_x {
-                                    if tile_rect.right() < player.rect.left() ||
-                                    tile_rect.left() > player.rect.right()
-                                    {
-                                        player.speed.x = 0.;
-                                    }
+                                    player.speed.x = 0.;
                                 }
 
                                 new_rect.x = player.rect.x;
                                 new_rect.y += dy;
                                 let overlaps_y = new_rect.overlaps(&tile_rect);
                                 if overlaps_y {
-                                    if tile_rect.bottom() < player.rect.top() ||
-                                       tile_rect.top() > player.rect.bottom()
-                                    {
-                                        player.speed.y = 0.;
-                                    }
+                                    player.speed.y = 0.;
                                 }
 
                                 let color = if overlaps_x || overlaps_y { LIME } else { PINK };
