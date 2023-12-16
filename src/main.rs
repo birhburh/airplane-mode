@@ -25,6 +25,7 @@ impl Default for Player {
 
 #[macroquad::main("Airplane Mode")]
 async fn main() {
+    let mut debug_mode = false;
     let tile_side = 32.;
     let mut input_handler = InputHandler::new();
     set_pc_assets_folder("assets");
@@ -88,6 +89,11 @@ async fn main() {
         if is_key_down(KeyCode::Escape) {
             break;
         }
+        if let Some(c) = get_char_pressed() {
+            if c.to_ascii_uppercase() == 'D' {
+                debug_mode = !debug_mode;
+            }
+        }
 
         let dx = player.speed.x * get_frame_time();
         let dy = player.speed.y * get_frame_time();
@@ -117,7 +123,7 @@ async fn main() {
             let start_y_f = start_y as f32 * tile_side + offsety;
             let layer_height = (end_y - start_y as f32) + 1.;
             let src = Rect::new(0., start_y as f32, 11., layer_height);
-            if start_y_f > camera_start && start_y_f < camera_end {
+            if start_set {
                 tiled_map.draw_tiles(
                     &layer.name,
                     Rect::new(
@@ -137,6 +143,23 @@ async fn main() {
                     player.speed.y = 0.;
                 }
 
+                let collision_rect = Rect::new(
+                    player.rect.x - (player.rect.w * 2.) / 2.,
+                    player.rect.y - (player.rect.h * 2.) / 2.,
+                    player.rect.w * 3.,
+                    player.rect.h * 3.,
+                );
+
+                if debug_mode {
+                    draw_rectangle_lines(
+                        collision_rect.left(),
+                        collision_rect.top(),
+                        collision_rect.w,
+                        collision_rect.h,
+                        2.,
+                        BLUE,
+                    );
+                }
                 for (x, y, tile) in tiled_map.tiles(&layer.name, src) {
                     let tile_rect = Rect::new(
                         x as f32 * tile_side + offsetx,
@@ -144,25 +167,24 @@ async fn main() {
                         tile_side,
                         tile_side,
                     );
-                    if tile_rect.y < (player.rect.y + camera_height / 2. + tile_side) {
-                        if let Some(tile) = tile {
-                            if tile.id != 0 {
-                                draw_rectangle_lines(
-                                    x as f32 * tile_side + offsetx,
-                                    tile_rect.y,
-                                    tile_side,
-                                    tile_side,
-                                    2.,
-                                    YELLOW,
-                                );
+
+                    if debug_mode {
+                        if tile_rect.y < (player.rect.y + camera_height / 2. + tile_side) {
+                            if let Some(tile) = tile {
+                                if tile.id != 0 {
+                                    draw_rectangle_lines(
+                                        x as f32 * tile_side + offsetx,
+                                        tile_rect.y,
+                                        tile_side,
+                                        tile_side,
+                                        2.,
+                                        YELLOW,
+                                    );
+                                }
                             }
                         }
                     }
-                    if tile_rect.y < player.rect.y + tile_side * 1.5
-                        && tile_rect.y > player.rect.y - tile_side * 1.5
-                        && tile_rect.x < player.rect.x + tile_side * 1.5
-                        && tile_rect.x > player.rect.x - tile_side * 1.5
-                    {
+                    if tile_rect.overlaps(&collision_rect) {
                         if let Some(tile) = tile {
                             if tile.id != 0 {
                                 let mut new_rect = Rect::new(
@@ -184,15 +206,17 @@ async fn main() {
                                     player.speed.y = 0.;
                                 }
 
-                                let color = if overlaps_x || overlaps_y { LIME } else { PINK };
-                                draw_rectangle_lines(
-                                    tile_rect.x,
-                                    tile_rect.y,
-                                    tile_rect.w,
-                                    tile_rect.h,
-                                    3.,
-                                    color,
-                                );
+                                if debug_mode {
+                                    let color = if overlaps_x || overlaps_y { LIME } else { PINK };
+                                    draw_rectangle_lines(
+                                        tile_rect.x,
+                                        tile_rect.y,
+                                        tile_rect.w,
+                                        tile_rect.h,
+                                        3.,
+                                        color,
+                                    );
+                                }
                             }
                         }
                     }
@@ -245,31 +269,28 @@ async fn main() {
             };
             tiled_map.spr("airplane", sprite, rect);
         }
-        draw_rectangle_lines(
-            player.rect.x,
-            player.rect.y,
-            player.rect.w,
-            player.rect.h,
-            2.,
-            BLUE,
-        );
+        if debug_mode {
+            draw_rectangle_lines(
+                player.rect.x,
+                player.rect.y,
+                player.rect.w,
+                player.rect.h,
+                2.,
+                BLUE,
+            );
+        }
 
         set_default_camera();
 
         #[cfg(target_os = "android")]
         input_handler.draw();
+
         draw_text(
             &format!("{:?}", (player.rect.x, player.rect.y)),
             0.0,
             32.0,
             16.,
             RED,
-        );
-        draw_circle(
-            (screen_width() - 2.) / 2.,
-            (screen_height() - 2.) / 2.,
-            2.,
-            BLUE,
         );
 
         let elapsed = now.elapsed();
@@ -284,7 +305,9 @@ async fn main() {
             DARKGRAY,
         );
 
-        profiler(Default::default());
+        if debug_mode {
+            profiler(Default::default());
+        }
 
         next_frame().await;
     }
