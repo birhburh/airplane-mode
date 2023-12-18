@@ -285,14 +285,6 @@ async fn main() {
         #[cfg(target_os = "android")]
         input_handler.draw();
 
-        draw_text(
-            &format!("{:?}", (player.rect.x, player.rect.y)),
-            0.0,
-            32.0,
-            16.,
-            RED,
-        );
-
         let elapsed = now.elapsed();
         let font_size = 30.;
         let text = format!("TIME: {:.2?}", elapsed);

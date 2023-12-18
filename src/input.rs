@@ -10,7 +10,7 @@ use std::collections::HashMap;
 fn draw_segment(x: f32, y: f32, radius: f32, rotation: f32, color: Color) {
     let rot = rotation.to_radians();
     let mut prev = Default::default();
-    for i in 0..(5 + 1) {
+    for i in 0..(2 + 1) {
         let rx = ((i as f32 * std::f32::consts::PI * 2.) / 20. + rot).cos();
         let ry = ((i as f32 * std::f32::consts::PI * 2.) / 20. + rot).sin();
 
@@ -19,11 +19,20 @@ fn draw_segment(x: f32, y: f32, radius: f32, rotation: f32, color: Color) {
                 Vec2::new(x, y),
                 prev,
                 Vec2::new(x + radius * rx, y + radius * ry),
-                if i % 2 == 0 { color } else { MAGENTA },
+                color,
             );
         }
         prev = Vec2::new(x + radius * rx, y + radius * ry);
     }
+    let rx = ((2.5 * std::f32::consts::PI * 2.) / 20. + rot).cos();
+    let ry = ((2.5 * std::f32::consts::PI * 2.) / 20. + rot).sin();
+
+    draw_triangle(
+        Vec2::new(x, y),
+        prev,
+        Vec2::new(x + radius * rx, y + radius * ry),
+        color,
+    );
 }
 
 #[cfg(target_os = "android")]
@@ -77,27 +86,11 @@ impl InputHandler {
                 .atan2(self.touch_start.x - touch.position.x)
                 .to_degrees();
             if self.touch_start != touch.position {
-                match angle {
-                    x if x >= 0. && x < 45. => {
-                        self.left_touch = true;
-                    }
-                    x if x >= 45. && x < 135. => {
-                        self.up_touch = true;
-                    }
-                    x if x >= 135. && x <= 180. => {
-                        self.right_touch = true;
-                    }
-                    x if x <= -135. && x >= -180. => {
-                        self.right_touch = true;
-                    }
-                    x if x <= -45. && x > -135. => {
-                        self.down_touch = true;
-                    }
-                    x if x < 0. && x > -45. => {
-                        self.left_touch = true;
-                    }
-                    _ => panic!("Wrong angle! How did you even make this?!"),
-                }
+                self.left_touch = angle >= -67.5 && angle < 67.5;
+                self.up_touch = angle >= 22.5 && angle < 157.5;
+                self.right_touch =
+                    angle >= 112.5 && angle <= 180. || angle >= -180. && angle <= -112.5;
+                self.down_touch = angle > -157.5 && angle <= -22.5;
             }
         }
 
@@ -124,9 +117,9 @@ impl InputHandler {
         for touch in touches().iter().take(1) {
             let (fill_color, size) = match touch.phase {
                 TouchPhase::Started => (GREEN, 80.0),
-                TouchPhase::Stationary => (RED, 60.0),
-                TouchPhase::Moved => (ORANGE, 60.0),
-                TouchPhase::Ended => (BLUE, 80.0),
+                TouchPhase::Stationary => (SKYBLUE, 60.0),
+                TouchPhase::Moved => (BLUE, 60.0),
+                TouchPhase::Ended => (RED, 80.0),
 
                 TouchPhase::Cancelled => (BLACK, 80.0),
             };
@@ -139,8 +132,8 @@ impl InputHandler {
                 fill_color,
             );
             let line_end = Vec2::new(self.touch_start.x, self.touch_start.y - size);
-            for i in 0..4 {
-                let new_end = rotate(line_end, self.touch_start, 90.0 * i as f32 + 45.0);
+            for i in 0..8 {
+                let new_end = rotate(line_end, self.touch_start, 45.0 * i as f32 + 22.5);
                 draw_line(
                     self.touch_start.x,
                     self.touch_start.y,
@@ -150,49 +143,38 @@ impl InputHandler {
                     fill_color,
                 );
             }
-            let angle = (self.touch_start.y - touch.position.y)
-                .atan2(self.touch_start.x - touch.position.x)
-                .to_degrees();
-            let seg_ang;
+            let mut seg_ang = 0.;
             if self.touch_start != touch.position {
-                match angle {
-                    x if x >= 0. && x < 45. => {
-                        seg_ang = 135.;
-                    }
-                    x if x >= 45. && x < 135. => {
-                        seg_ang = 225.;
-                    }
-                    x if x >= 135. && x <= 180. => {
-                        seg_ang = 315.;
-                    }
-                    x if x <= -135. && x >= -180. => {
-                        seg_ang = 315.;
-                    }
-                    x if x <= -45. && x > -135. => {
-                        seg_ang = 45.;
-                    }
-                    x if x < 0. && x > -45. => {
-                        seg_ang = 135.;
-                    }
-                    _ => panic!("Wrong angle! How did you even make this?!"),
+                if self.left {
+                    seg_ang = if self.up {
+                        202.5
+                    } else if self.down {
+                        112.5
+                    } else {
+                        157.5
+                    };
+                } else if self.up {
+                    seg_ang = if self.right { 293.5 } else { 247.5 };
+                } else if self.right {
+                    seg_ang = if self.down { 22.5 } else { 337.5 };
+                } else if self.down {
+                    seg_ang = 67.5;
                 }
-                draw_segment(
-                    self.touch_start.x,
-                    self.touch_start.y,
-                    size,
-                    seg_ang,
-                    SKYBLUE,
-                );
+                draw_segment(self.touch_start.x, self.touch_start.y, size, seg_ang, fill_color);
             }
             draw_circle_lines(self.touch_start.x, self.touch_start.y, size, 2., fill_color);
             draw_circle(touch.position.x, touch.position.y, size, fill_color);
-            draw_text(
-                format!("ANGLE: {}", angle).as_str(),
-                10.,
-                30.,
-                20.,
-                DARKGRAY,
+
+            let font_size = 30.;
+            let text = format!(
+                "{}{}{}{}",
+                if self.left { 'L' } else { 'X' },
+                if self.up { 'U' } else { 'X' },
+                if self.right { 'R' } else { 'X' },
+                if self.down { 'D' } else { 'X' }
             );
+            let text_size = measure_text(&text, None, font_size as _, 1.0);
+            draw_text(&text, 6., text_size.height + 1., font_size, DARKGRAY);
         }
     }
 }
