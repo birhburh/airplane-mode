@@ -160,7 +160,13 @@ impl InputHandler {
                 } else if self.down {
                     seg_ang = 67.5;
                 }
-                draw_segment(self.touch_start.x, self.touch_start.y, size, seg_ang, fill_color);
+                draw_segment(
+                    self.touch_start.x,
+                    self.touch_start.y,
+                    size,
+                    seg_ang,
+                    fill_color,
+                );
             }
             draw_circle_lines(self.touch_start.x, self.touch_start.y, size, 2., fill_color);
             draw_circle(touch.position.x, touch.position.y, size, fill_color);
